@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
-from statsmodels.stats.proportion import proportions_ztest, proportions_chisquare
+from statsmodels.stats.proportion import proportions_ztest, proportions_chisquare,proportion_confint
+
 
 class HypothesisTesting:
     def __init__(self, dataframe):
@@ -135,7 +136,7 @@ class HypothesisTesting:
 
         # 将 DataFrame 转换为列表
         data = df.values.tolist()
-        data = list(map(list, zip(*data)))
+        # data = list(map(list, zip(*data)))
         k = len(data)
 
         f_stat, p_val = stats.f_oneway(*data)
@@ -246,13 +247,16 @@ class HypothesisTesting:
         else:
             return f_stat, p_val, crit_value
     
-    def multiple_sample_variance(self, *columns, alternative='two-sided', alpha=0.05):
+
+
+    def multiple_sample_variance(self, *columns, alternative='two-sided',test_type='bartlett', alpha=0.05):
         """
         多样本方差检验
         :param columns: str，可变数量的待检验的列名
+        :param test_type: str，检验类型（'hartley'、'bartlett'、'modified_bartlett' 或 'levene'）
         :param alternative: str，假设检验类型（'two-sided'、'less' 或 'greater'）
         :param alpha: float，显著性水平（默认为 0.05）
-        :return: F-statistic, p-value, critical value
+        :return: 统计量, p-value, 临界值
         """
         da = []
         for column in columns:
@@ -262,35 +266,73 @@ class HypothesisTesting:
 
         # 将 DataFrame 转换为列表
         data = df.values.tolist()
-        k = len(data)
+        
 
-        
-        # 计算 Bartlett's test 统计量
-        f_stat, p_val = stats.bartlett(*data)
-        
-        # 计算 F 分布的临界值
-        df1 = k - 1  # 自由度1：样本组数减去1
-        df2 = sum(len(d) for d in data) - k  # 自由度2：样本总数减去样本组数
+        if test_type == 'hartley':
+            stat, p_val, crit_value = self._hartley_test(data, alternative, alpha)
+        elif test_type == 'bartlett':
+            stat, p_val = stats.bartlett(*data)
+            crit_value = self._compute_critical_value(stat, p_val, alternative, alpha)
+        elif test_type == 'modified_bartlett':
+            stat, p_val = self._modified_bartlett_test(data)
+            crit_value = self._compute_critical_value(stat, p_val, alternative, alpha)
+        elif test_type == 'levene':
+            stat, p_val = stats.levene(*data)
+            crit_value = self._compute_critical_value(stat, p_val, alternative, alpha)
+        else:
+            raise ValueError("test_type 必须是 'hartley'、'bartlett'、'modified_bartlett' 或 'levene'")
+
+        return stat, p_val, crit_value
+
+    def _hartley_test(self, data, alternative, alpha):
+        variances = [np.var(d, ddof=1) for d in data]
+        max_var = max(variances)
+        min_var = min(variances)
+        hartley_stat = max_var / min_var
+        k = len(data)
+        pooled_n = sum(len(d) for d in data)
+        df1 = k - 1
+        df2 = pooled_n - k
 
         if alternative == 'two-sided':
             crit_value_low = stats.f.ppf(alpha / 2, df1, df2)
             crit_value_high = stats.f.ppf(1 - alpha / 2, df1, df2)
             crit_value = (crit_value_low, crit_value_high)
-            # For two-sided, you may need to compare the absolute f_stat to critical values.
-            p_val = 2 * min(stats.f.cdf(f_stat, df1, df2), 1 - stats.f.cdf(f_stat, df1, df2))
+            p_val = 2 * min(stats.f.cdf(hartley_stat, df1, df2), 1 - stats.f.cdf(hartley_stat, df1, df2))
         elif alternative == 'less':
             crit_value = stats.f.ppf(alpha, df1, df2)
-            # For less, p-value is directly from the F distribution CDF.
-            p_val = stats.f.cdf(f_stat, df1, df2)
+            p_val = stats.f.cdf(hartley_stat, df1, df2)
         elif alternative == 'greater':
             crit_value = stats.f.ppf(1 - alpha, df1, df2)
-            # For greater, p-value is the complement of the F distribution CDF.
-            p_val = 1 - stats.f.cdf(f_stat, df1, df2)
+            p_val = 1 - stats.f.cdf(hartley_stat, df1, df2)
         else:
             raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
 
-        return f_stat, p_val, crit_value
+        return hartley_stat, p_val, crit_value
 
+    def _modified_bartlett_test(self, data):
+        variances = [np.var(d, ddof=1) for d in data]
+        k = len(data)
+        n = [len(d) for d in data]
+        pooled_n = sum(n)
+        mean_var = np.mean(variances)
+        m = pooled_n - k
+        chi2_stat = (m * np.log(mean_var) - sum([len(d) * np.log(np.var(d, ddof=1)) for d in data])) / (1 + (1 / (3 * (k - 1))) * (sum([1 / (len(d) - 1) for d in data]) - 1 / m))
+        p_val = 1 - stats.chi2.cdf(chi2_stat, k - 1)
+        return chi2_stat, p_val
+
+    def _compute_critical_value(self, stat, p_val, alternative, alpha):
+        if alternative == 'two-sided':
+            crit_value_low = stats.norm.ppf(alpha / 2)
+            crit_value_high = stats.norm.ppf(1 - alpha / 2)
+            crit_value = (crit_value_low, crit_value_high)
+        elif alternative == 'less':
+            crit_value = stats.norm.ppf(alpha)
+        elif alternative == 'greater':
+            crit_value = stats.norm.ppf(1 - alpha)
+        else:
+            raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
+        return crit_value
 
 
     def one_sample_proportion(self, count_column, nobs_column, prop, alternative='two-sided', alpha=0.05):
@@ -301,10 +343,17 @@ class HypothesisTesting:
         :param prop: float，假设比例
         :param alternative: str，假设检验类型（'two-sided'、'less' 或 'greater'）
         :param alpha: float，显著性水平（默认为 0.05）
-        :return: z-statistic, p-value, critical value
+        :return: z-statistic or exact p-value, p-value, critical value or confidence interval
         """
         count = self.dataframe[count_column].sum()
         nobs = self.dataframe[nobs_column].sum()
+        
+        # 检查条件
+        if count < 5 or nobs - count < 5 or not (0.1 < prop < 0.9):
+            print("使用精确分析法")
+            p_val = stats.binom_test(count, n=nobs, p=prop, alternative=alternative)
+            confint_low, confint_high = proportion_confint(count, nobs, alpha=alpha, method='exact')
+            return None, p_val, (confint_low, confint_high)
         
         # 计算 z 统计量和 p 值
         stat, p_val = proportions_ztest(count, nobs, prop, alternative=alternative)
@@ -329,14 +378,18 @@ class HypothesisTesting:
         
         return stat, p_val, crit_value
 
-    def two_sample_proportion(self, count1_column, nobs1_column, count2_column, nobs2_column, prop, alternative='two-sided', alpha=0.05):
+
+
+
+
+    def two_sample_proportion(self, count1_column, nobs1_column, count2_column, nobs2_column, prop=None, alternative='two-sided', alpha=0.05):
         """
         双样本比例检验
         :param count1_column: str，样本1中成功次数的列名
         :param nobs1_column: str，样本1的样本量的列名
         :param count2_column: str，样本2中成功次数的列名
         :param nobs2_column: str，样本2的样本量的列名
-        :param prop: float，假设比例
+        :param prop: float，假设比例（合并估计比例为None，分别估计比例为两个比例之差）
         :param alternative: str，假设检验类型（'two-sided'、'less' 或 'greater'）
         :param alpha: float，显著性水平（默认为 0.05）
         :return: z-statistic, p-value, critical value
@@ -345,29 +398,53 @@ class HypothesisTesting:
         nobs1 = self.dataframe[nobs1_column].sum()
         count2 = self.dataframe[count2_column].sum()
         nobs2 = self.dataframe[nobs2_column].sum()
-        
-        # 计算 z 统计量和 p 值
-        stat, p_val = proportions_ztest([count1, count2], [nobs1, nobs2], value=prop, alternative=alternative)
-        
+
+        if prop is None:
+            # 合并估计比例
+            stat, p_val = proportions_ztest([count1, count2], [nobs1, nobs2], alternative=alternative)
+        else:
+            # 分别估计比例，prop 是两个比例之差
+            p1 = count1 / nobs1
+            p2 = count2 / nobs2
+            pooled_se = np.sqrt(p1 * (1 - p1) / nobs1 + p2 * (1 - p2) / nobs2)
+            stat = (p1 - p2 - prop) / pooled_se
+            p_val = self._compute_p_value(stat, alternative)
+
         # 计算临界值
+        crit_value = self._compute_critical_value1(alternative, alpha)
+
+        return stat, p_val, crit_value
+
+    def _compute_p_value(self, stat, alternative):
+        """
+        计算 p 值
+        """
+        if alternative == 'two-sided':
+            p_val = 2 * (1 - stats.norm.cdf(np.abs(stat)))
+        elif alternative == 'less':
+            p_val = stats.norm.cdf(stat)
+        elif alternative == 'greater':
+            p_val = 1 - stats.norm.cdf(stat)
+        else:
+            raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
+        return p_val
+
+    def _compute_critical_value1(self, alternative, alpha):
+        """
+        计算临界值
+        """
         if alternative == 'two-sided':
             crit_value_low = stats.norm.ppf(alpha / 2)
             crit_value_high = stats.norm.ppf(1 - alpha / 2)
             crit_value = (crit_value_low, crit_value_high)
-            # 对于双尾检验，p-value 是 z 统计量绝对值的两侧面积
-            p_val = 2 * (1 - stats.norm.cdf(np.abs(stat)))
         elif alternative == 'less':
             crit_value = stats.norm.ppf(alpha)
-            # 对于单尾检验（小于），p-value 是 z 统计量的左侧面积
-            p_val = stats.norm.cdf(stat)
         elif alternative == 'greater':
             crit_value = stats.norm.ppf(1 - alpha)
-            # 对于单尾检验（大于），p-value 是 z 统计量的右侧面积
-            p_val = 1 - stats.norm.cdf(stat)
         else:
             raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
-        
-        return stat, p_val, crit_value
+        return crit_value
+
     def multiple_sample_proportion(self, count_columns, nobs_columns, prop, alternative='two-sided', alpha=0.05):
         """
         多样本比例检验（列联表）
@@ -441,7 +518,7 @@ if __name__ == "__main__":
     print("双样本方差检验:", f_stat, p_val, crit_value)
 
     # 多样本方差检验
-    f_stat, p_val, crit_value = ht.multiple_sample_variance(['sample1', 'sample2', 'sample3'], alternative='two-sided')
+    f_stat, p_val, crit_value = ht.multiple_sample_variance(['sample1', 'sample2', 'sample3'], alternative='two-sided', test_type='bartlett', alpha=0.05)
     print("多样本方差检验:", f_stat, p_val, crit_value)
 
     # 单样本比例检验

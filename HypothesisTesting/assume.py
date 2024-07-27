@@ -140,12 +140,12 @@ class HypothesisTesting:
         k = len(data)
 
         f_stat, p_val = stats.f_oneway(*data)
-        df_between = len(columns) - 1
-        df_within = sum([len(d) for d in data]) - len(columns)
-
+        df_between = k - 1
+        df_within = sum([len(d) for d in data]) - k
         if alternative == 'two-sided':
-            crit_value = stats.f.ppf(1 - alpha / 2, df_between, df_within)
-            p_val = 2 * min(stats.f.cdf(f_stat, df_between, df_within), 1 - stats.f.cdf(f_stat, df_between, df_within))
+            crit_value_low = stats.f.ppf(alpha / 2, df_between, df_within)
+            crit_value_high = stats.f.ppf(1 - alpha / 2, df_between, df_within)
+            crit_value = (crit_value_low, crit_value_high)
         elif alternative == 'less':
             crit_value = stats.f.ppf(alpha, df_between, df_within)
             p_val = stats.f.cdf(f_stat, df_between, df_within)
@@ -249,7 +249,8 @@ class HypothesisTesting:
     
 
 
-    def multiple_sample_variance(self, *columns, alternative='two-sided',test_type='bartlett', alpha=0.05):
+
+    def multiple_sample_variance(self, *columns, alternative='two-sided', test_type='hartley', alpha=0.05):
         """
         多样本方差检验
         :param columns: str，可变数量的待检验的列名
@@ -266,23 +267,45 @@ class HypothesisTesting:
 
         # 将 DataFrame 转换为列表
         data = df.values.tolist()
-        
-
         if test_type == 'hartley':
             stat, p_val, crit_value = self._hartley_test(data, alternative, alpha)
         elif test_type == 'bartlett':
-            stat, p_val = stats.bartlett(*data)
-            crit_value = self._compute_critical_value(stat, p_val, alternative, alpha)
+            stat, p_val, crit_value = self._bartlett_test(data, alternative, alpha)
         elif test_type == 'modified_bartlett':
-            stat, p_val = self._modified_bartlett_test(data)
-            crit_value = self._compute_critical_value(stat, p_val, alternative, alpha)
+            stat, p_val, crit_value = self._modified_bartlett_test(data, alternative, alpha)
         elif test_type == 'levene':
-            stat, p_val = stats.levene(*data)
-            crit_value = self._compute_critical_value(stat, p_val, alternative, alpha)
+            stat, p_val, crit_value = self._levene_test(data, alternative, alpha)
         else:
             raise ValueError("test_type 必须是 'hartley'、'bartlett'、'modified_bartlett' 或 'levene'")
 
         return stat, p_val, crit_value
+    def _hartley_test(self, data, alternative, alpha):
+        variances = [np.var(d, ddof=1) for d in data]
+        max_var = max(variances)
+        min_var = min(variances)
+        hartley_stat = max_var / min_var
+        k = len(data)
+        n = [len(d) for d in data]
+        pooled_n = sum(n)
+        df1 = k - 1
+        df2 = pooled_n - k
+
+        if alternative == 'two-sided':
+            crit_value_low = stats.f.ppf(alpha / 2, df1, df2)
+            crit_value_high = stats.f.ppf(1 - alpha / 2, df1, df2)
+            crit_value = (crit_value_low, crit_value_high)
+            p_val = 2 * min(stats.f.cdf(hartley_stat, df1, df2), 1 - stats.f.cdf(hartley_stat, df1, df2))
+        elif alternative == 'less':
+            crit_value = stats.f.ppf(alpha, df1, df2)
+            p_val = stats.f.cdf(hartley_stat, df1, df2)
+        elif alternative == 'greater':
+            crit_value = stats.f.ppf(1 - alpha, df1, df2)
+            p_val = 1 - stats.f.cdf(hartley_stat, df1, df2)
+        else:
+            raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
+
+        return hartley_stat, p_val, crit_value
+
 
     def _hartley_test(self, data, alternative, alpha):
         variances = [np.var(d, ddof=1) for d in data]
@@ -310,7 +333,26 @@ class HypothesisTesting:
 
         return hartley_stat, p_val, crit_value
 
-    def _modified_bartlett_test(self, data):
+    def _bartlett_test(self, data, alternative, alpha):
+        stat, p_val = stats.bartlett(*data)
+        df = len(data) - 1
+
+        if alternative == 'two-sided':
+            crit_value_low = stats.chi2.ppf(alpha / 2, df)
+            crit_value_high = stats.chi2.ppf(1 - alpha / 2, df)
+            crit_value = (crit_value_low, crit_value_high)
+        elif alternative == 'less':
+            crit_value = stats.chi2.ppf(alpha, df)
+            p_val = stats.chi2.cdf(stat, df)
+        elif alternative == 'greater':
+            crit_value = stats.chi2.ppf(1 - alpha, df)
+            p_val = 1 - stats.chi2.cdf(stat, df)
+        else:
+            raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
+
+        return stat, p_val, crit_value
+
+    def _modified_bartlett_test(self, data, alternative, alpha):
         variances = [np.var(d, ddof=1) for d in data]
         k = len(data)
         n = [len(d) for d in data]
@@ -318,21 +360,46 @@ class HypothesisTesting:
         mean_var = np.mean(variances)
         m = pooled_n - k
         chi2_stat = (m * np.log(mean_var) - sum([len(d) * np.log(np.var(d, ddof=1)) for d in data])) / (1 + (1 / (3 * (k - 1))) * (sum([1 / (len(d) - 1) for d in data]) - 1 / m))
-        p_val = 1 - stats.chi2.cdf(chi2_stat, k - 1)
-        return chi2_stat, p_val
+        df = k - 1
 
-    def _compute_critical_value(self, stat, p_val, alternative, alpha):
         if alternative == 'two-sided':
-            crit_value_low = stats.norm.ppf(alpha / 2)
-            crit_value_high = stats.norm.ppf(1 - alpha / 2)
+            crit_value_low = stats.chi2.ppf(alpha / 2, df)
+            crit_value_high = stats.chi2.ppf(1 - alpha / 2, df)
             crit_value = (crit_value_low, crit_value_high)
+            p_val = 2 * min(stats.chi2.cdf(chi2_stat, df), 1 - stats.chi2.cdf(chi2_stat, df))
         elif alternative == 'less':
-            crit_value = stats.norm.ppf(alpha)
+            crit_value = stats.chi2.ppf(alpha, df)
+            p_val = stats.chi2.cdf(chi2_stat, df)
         elif alternative == 'greater':
-            crit_value = stats.norm.ppf(1 - alpha)
+            crit_value = stats.chi2.ppf(1 - alpha, df)
+            p_val = 1 - stats.chi2.cdf(chi2_stat, df)
         else:
             raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
-        return crit_value
+
+        return chi2_stat, p_val, crit_value
+
+    def _levene_test(self, data, alternative, alpha):
+        stat, p_val = stats.levene(*data)
+        df1 = len(data) - 1
+        df2 = sum(len(d) for d in data) - len(data)
+
+        if alternative == 'two-sided':
+            crit_value_low = stats.f.ppf(alpha / 2, df1, df2)
+            crit_value_high = stats.f.ppf(1 - alpha / 2, df1, df2)
+            crit_value = (crit_value_low, crit_value_high)
+            p_val = 2 * min(stats.f.cdf(stat, df1, df2), 1 - stats.f.cdf(stat, df1, df2))
+        elif alternative == 'less':
+            crit_value = stats.f.ppf(alpha, df1, df2)
+            p_val = stats.f.cdf(stat, df1, df2)
+        elif alternative == 'greater':
+            crit_value = stats.f.ppf(1 - alpha, df1, df2)
+            p_val = 1 - stats.f.cdf(stat, df1, df2)
+        else:
+            raise ValueError("alternative 必须是 'two-sided'、'less' 或 'greater'")
+
+        return stat, p_val, crit_value
+
+
 
 
     def one_sample_proportion(self, count_column, nobs_column, prop, alternative='two-sided', alpha=0.05):
@@ -486,49 +553,41 @@ class HypothesisTesting:
 # 示例用法:
 if __name__ == "__main__":
     # 创建示例 DataFrame
-    df = pd.DataFrame({
-        'sample1': np.random.normal(0, 1, 100),
-        'sample2': np.random.normal(0.5, 1, 100),
-        'sample3': np.random.normal(1, 1, 100),
-        'success_count1': np.random.randint(0, 100, 100),
-        'total_count1': np.random.randint(100, 200, 100),
-        'success_count2': np.random.randint(0, 100, 100),
-        'total_count2': np.random.randint(100, 200, 100)
-    })
-
-    ht = HypothesisTesting(df)
+    df = pd.read_excel(r'D:\ZH\foot\HypothesisTesting\test.xlsx')
     
+    ht = HypothesisTesting(df)
+    config = {'alt' : 'less'}
     # 单样本均值检验
-    t_stat, p_val, crit_value = ht.one_sample_mean('sample1', 0, alternative='two-sided')
+    t_stat, p_val, crit_value = ht.one_sample_mean('A1', 0, alternative=config['alt'])
     print("单样本均值检验:", t_stat, p_val, crit_value)
 
     # 双样本均值检验
-    t_stat, p_val, crit_value = ht.two_sample_mean('sample1', 'sample2', sigma1=None, sigma2=None, equal_var=True, alternative='two-sided', alpha=0.05)
+    t_stat, p_val, crit_value = ht.two_sample_mean('A1', 'A2', sigma1=None, sigma2=None, equal_var=True, alternative=config['alt'], alpha=0.05)
     print("双样本均值检验:", t_stat, p_val, crit_value)
     #多样本均值检验
-    f_stat, p_val, crit_value = ht.multiple_sample_mean(['sample1', 'sample2', 'sample3'], alternative='two-sided')
+    f_stat, p_val, crit_value = ht.multiple_sample_mean(['A1', 'A2', 'A3','A4'], alternative=config['alt'])
     print("多样本均值检验:", f_stat, p_val, crit_value)
 
     # 单样本方差检验
-    chi2_stat, p_val, crit_value = ht.one_sample_variance('sample1', 1, mean_known=None, alternative='two-sided', alpha=0.05)
+    chi2_stat, p_val, crit_value = ht.one_sample_variance('A1', 1, mean_known=None, alternative=config['alt'], alpha=0.05)
     print("单样本方差检验:", chi2_stat, p_val, crit_value)
 
     # 双样本方差检验
-    f_stat, p_val, crit_value = ht.two_sample_variance('sample1', 'sample2', mean1=None, mean2=None, alternative='two-sided', alpha=0.05)
+    f_stat, p_val, crit_value = ht.two_sample_variance('A1', 'A2', mean1=None, mean2=None, alternative=config['alt'], alpha=0.05)
     print("双样本方差检验:", f_stat, p_val, crit_value)
 
     # 多样本方差检验
-    f_stat, p_val, crit_value = ht.multiple_sample_variance(['sample1', 'sample2', 'sample3'], alternative='two-sided', test_type='bartlett', alpha=0.05)
+    f_stat, p_val, crit_value = ht.multiple_sample_variance(['A1', 'A2', 'A3','A4'], alternative=config['alt'], test_type='hartley', alpha=0.05)
     print("多样本方差检验:", f_stat, p_val, crit_value)
 
-    # 单样本比例检验
-    z_stat, p_val, crit_value = ht.one_sample_proportion('success_count1', 'total_count1', 0.3, alternative='two-sided')
-    print("单样本比例检验:", z_stat, p_val, crit_value)
+    # # 单样本比例检验
+    # z_stat, p_val, crit_value = ht.one_sample_proportion('success_count1', 'total_count1', 0.3, alternative=config['alt'])
+    # print("单样本比例检验:", z_stat, p_val, crit_value)
 
-    # 双样本比例检验
-    z_stat, p_val, crit_value = ht.two_sample_proportion('success_count1', 'total_count1', 'success_count2', 'total_count2', 0.3, alternative='two-sided')
-    print("双样本比例检验:", z_stat, p_val, crit_value)
+    # # 双样本比例检验
+    # z_stat, p_val, crit_value = ht.two_sample_proportion('success_count1', 'total_count1', 'success_count2', 'total_count2', 0.3, alternative=config['alt'])
+    # print("双样本比例检验:", z_stat, p_val, crit_value)
 
-    # 多样本比例检验（列联表）
-    chi2_stat, p_val, crit_value = ht.multiple_sample_proportion(['success_count1', 'success_count2'], ['total_count1', 'total_count2'],0.3,alternative='two-sided')
-    print("多样本比例检验:", chi2_stat, p_val, crit_value)
+    # # 多样本比例检验（列联表）
+    # chi2_stat, p_val, crit_value = ht.multiple_sample_proportion(['success_count1', 'success_count2'], ['total_count1', 'total_count2'],0.3,alternative=config['alt'])
+    # print("多样本比例检验:", chi2_stat, p_val, crit_value)

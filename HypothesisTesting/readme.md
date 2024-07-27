@@ -25,6 +25,8 @@
 - **Parameters**: 
   - `column1` (str): 待检验的第一列名。
   - `column2` (str): 待检验的第二列名。
+  - `sigma1` (float):第一组的已知标准差（可选）
+  - `sigma2` (float):第二组的已知标准差（可选）
   - `equal_var` (bool): 是否假设方差相等，默认值为 True。
   - `alternative` (str):假设检验类型（'two-sided'、'less' 或 'greater'）
   - `alpha` (float):显著性水平（默认为 0.05）
@@ -65,6 +67,7 @@
 - **Description**: 多样本方差检验（单因素方差分析）。
 - **Parameters**: 
   - `columns` (list of str): 可变数量的待检验的列名。
+  - `test_type`(str): 检验方法（'hartley'、'bartlett'、'modified_bartlett' 或 'levene'）
   - `alternative` (str):假设检验类型（'two-sided'、'less' 或 'greater'）
   - `alpha` (float):显著性水平（默认为 0.05）
 - **Returns**: f-statistic, p-value, critical value
@@ -87,6 +90,7 @@
   - `nobs1_column` (str): 样本1的样本量的列名。
   - `count2_column` (str): 样本2中成功次数的列名。
   - `nobs2_column` (str): 样本2的样本量的列名。
+  - `prop`(float)：假设比例
   - `alternative` (str):假设检验类型（'two-sided'、'less' 或 'greater'）
   - `alpha` (float):显著性水平（默认为 0.05）
 - **Returns**: z-statistic, p-value, critical value
@@ -97,6 +101,7 @@
 - **Description**: 多样本比例检验（列联表）。
 - **Parameters**: 
   - `columns` (list of str): 列联表的列名列表。
+  - `prop`(float)：假设比例
   - `alternative` (str):假设检验类型（'two-sided'、'less' 或 'greater'）
   - `alpha` (float):显著性水平（默认为 0.05）
 - **Returns**: chi2-statistic, p-value, critical value

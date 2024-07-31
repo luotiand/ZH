@@ -23,7 +23,6 @@ class ControlCharts:
         # 计算每组的UCL和LCL
         self.df['UCL'] = self.df.apply(lambda row: p_bar + 3 * np.sqrt((p_bar * (1 - p_bar)) / row['Total']), axis=1)
         self.df['LCL'] = self.df.apply(lambda row: p_bar - 3 * np.sqrt((p_bar * (1 - p_bar)) / row['Total']), axis=1)
-        self.df['LCL'] = self.df['LCL'].clip(lower=0)  # 确保LCL不小于0
         chartRules = ChartRules(self.df['p'],self.df['UCL'],self.df['LCL'])
         points_outside_control_limits = chartRules.points_outside_control_limits()
         six_consecutive_points = chartRules.six_consecutive_points_trending()

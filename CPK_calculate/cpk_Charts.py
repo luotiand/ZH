@@ -371,29 +371,42 @@ class ProcessCapability:
         plt.ylabel('Frequency')
         plt.legend()
         plt.show()
-    def plot_moving_average_chart(self):
+    def plot_moving_average_chart(self,size = 3):
         """
         绘制移动平均控制图，包括数据点、移动平均线和控制界限。
         """
         df = pd.DataFrame({'data': self.data})
         n = len(df)
         sample_size = n // self.num_groups
-        moving_avg = df['data'].rolling(window=sample_size).mean()
+        df['group'] = (df.index // sample_size) + 1
+        group_means = df.groupby('group')['data'].mean().reset_index()
+        group_means = group_means.rename(columns={'data': 'group_mean'})
 
+        # 初始化加权移动平均序列
+        moving_avg = group_means['group_mean'].rolling(window=size).mean()
+        mv = pd.DataFrame(moving_avg)
         # 计算移动平均线的控制限
         mean_ma = moving_avg.mean()
         std_dev_ma = moving_avg.std()
+        d2 = {
+            2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534,
+            7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078, 11: 3.173,
+            12: 3.258, 13: 3.336, 14: 3.407, 15: 3.472, 16: 3.532,
+            17: 3.588, 18: 3.640, 19: 3.689, 20: 3.735,
+            25: 3.971, 30: 4.136, 35: 4.251, 40: 4.337
+            }.get(sample_size) 
+        # UCL = mean + L * std_dev * ((lambda_value / (2 - lambda_value)) * (1 - (1 - lambda_value)**(2 * (np.arange(1, n+1)))))**0.5
+        # LCL = mean - L * std_dev * ((lambda_value / (2 - lambda_value)) * (1 - (1 - lambda_value)**(2 * (np.arange(1, n+1)))))**0.5
         UCL = mean_ma + 3 * std_dev_ma
         LCL = mean_ma - 3 * std_dev_ma
-        LCL = max(0, LCL)  # 控制下限不能小于0
 
         # 绘制移动平均图
         plt.figure(figsize=(12, 6))
-        plt.plot(df.index, df['data'], marker='o', linestyle='-', color='b', label='Data')
-        plt.plot(moving_avg.index, moving_avg, marker='x', linestyle='-', color='g', label='Moving Average')
+        plt.plot(moving_avg.index, moving_avg,  marker='o', linestyle='-', color='g', label='Moving Average')
+        plt.axhline(UCL, linestyle='--', color='r', label='UCL')
+        plt.axhline(LCL, linestyle='--', color='r', label='LCL')
         plt.axhline(mean_ma, color='r', linestyle='--', label='Mean')
-        plt.axhline(UCL, color='r', linestyle='--', label='UCL')
-        plt.axhline(LCL, color='r', linestyle='--', label='LCL')
+
         plt.title('Moving Average Control Chart')
         plt.xlabel('Sample')
         plt.ylabel('Value')
@@ -407,34 +420,102 @@ class ProcessCapability:
             'LCL': LCL,
         }
         return calculations
-    def plot_ewma_chart(self, lambda_value=0.2):
-        """
-        绘制EWMA控制图，包括数据点、EWMA线和控制界限。
+    
+    def plot_standard_chart(self):
+        df = pd.DataFrame({'data': self.data})
+        n = len(df)
+        sample_size = n // self.num_groups
+        
+        # 如果样本数量不能整除分组数量，则最后一组的样本数可能会少于其他组
+        df['group'] = (df.index // sample_size) + 1
+        group_means = df.groupby('group')['data'].mean().reset_index()
+        group_means = group_means.rename(columns={'data': 'group_mean'})
 
-        参数:
-        lambda_value (float): 权重参数，决定新数据点在EWMA计算中的权重。
+        # 标准化组均值
+        group_mean_overall_mean = group_means['group_mean'].mean()
+        group_mean_overall_std = group_means['group_mean'].std()
+        group_means['group_mean_standard'] = (group_means['group_mean'] - group_mean_overall_mean) / group_mean_overall_std * np.sqrt(sample_size)
+
+        # 查找 d2 值
+        d2 = {
+            2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534,
+            7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078, 11: 3.173,
+            12: 3.258, 13: 3.336, 14: 3.407, 15: 3.472, 16: 3.532,
+            17: 3.588, 18: 3.640, 19: 3.689, 20: 3.735,
+            25: 3.971, 30: 4.136, 35: 4.251, 40: 4.337
+        }.get(sample_size)
+
+        # 计算标准化后的 UCL 和 LCL
+        UCL = group_means['group_mean_standard'].mean() + 3
+        LCL = group_means['group_mean_standard'].mean() - 3
+
+        # 绘制标准化控制图
+        plt.figure(figsize=(12, 6))
+        plt.plot(group_means.index, group_means['group_mean_standard'], marker='o', linestyle='-', color='g', label='standard')
+        plt.axhline(UCL, linestyle='--', color='r', label='UCL')
+        plt.axhline(LCL, linestyle='--', color='r', label='LCL')
+        plt.axhline(group_means['group_mean_standard'].mean(), color='r', linestyle='--', label='Mean')
+        plt.title('Standard Control Chart')
+        plt.xlabel('Sample')
+        plt.ylabel('Value')
+        plt.legend()
+        plt.show()
+
+        calculations = {
+            'UCL': UCL,
+            'LCL': LCL,
+        }
+        return calculations
+
+    
+    def plot_ewma_chart(self, r=0.2):
+        """
+        绘制移动平均控制图，包括数据点、移动平均线和控制界限。
         """
         df = pd.DataFrame({'data': self.data})
         n = len(df)
+        sample_size = n // self.num_groups
+        df['group'] = (df.index // sample_size) + 1
+        group_means = df.groupby('group')['data'].mean().reset_index()
+        group_means = group_means.rename(columns={'data': 'group_mean'})
 
-        # 计算EWMA
-        ewma = df['data'].ewm(span=1/lambda_value, adjust=False).mean()
+        # 初始化加权移动平均序列
+        moving_avg = group_means['group_mean'].mean()  # Z0 是第一组的均值
+        moving_avg = [moving_avg]
+        # 计算后续值
+        for i in range(1, len(group_means)):
+            prev_z = moving_avg[-1]
+            current_x = group_means['group_mean'].iloc[i]
+            new_z = prev_z * (1 - r) + current_x * r
+            moving_avg.append(new_z)
 
-        # 计算控制界限
-        mean = df['data'].mean()
-        std_dev = df['data'].std()
-        L = 3  # 控制界限的系数，一般为3
-        UCL = mean + L * std_dev * ((lambda_value / (2 - lambda_value)) * (1 - (1 - lambda_value)**(2 * (np.arange(1, n+1)))))**0.5
-        LCL = mean - L * std_dev * ((lambda_value / (2 - lambda_value)) * (1 - (1 - lambda_value)**(2 * (np.arange(1, n+1)))))**0.5
-        LCL = np.maximum(0, LCL)  # 控制下限不能小于0
+        # 将结果添加到 DataFrame 中
+        group_means['moving_avg'] = moving_avg
+        # 计算移动平均线的控制限
+        mean_ma = group_means['moving_avg'].mean()
+        std_dev_ma =group_means['moving_avg'].std()
+        d2 = {
+            2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534,
+            7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078, 11: 3.173,
+            12: 3.258, 13: 3.336, 14: 3.407, 15: 3.472, 16: 3.532,
+            17: 3.588, 18: 3.640, 19: 3.689, 20: 3.735,
+            25: 3.971, 30: 4.136, 35: 4.251, 40: 4.337
+            }.get(sample_size) 
+        # UCL = mean + L * std_dev * ((lambda_value / (2 - lambda_value)) * (1 - (1 - lambda_value)**(2 * (np.arange(1, n+1)))))**0.5
+        # LCL = mean - L * std_dev * ((lambda_value / (2 - lambda_value)) * (1 - (1 - lambda_value)**(2 * (np.arange(1, n+1)))))**0.5
 
-        # 绘制EWMA图
+        group_means['UCL'] = mean_ma + 3 * std_dev_ma*np.sqrt((r/(2-r))*(1-(1-r)**(2*group_means.index)))
+        group_means['LCL'] = mean_ma - 3 * std_dev_ma*np.sqrt((r/(2-r))*(1-(1-r)**(2*group_means.index)))
+        UCL = mean_ma + 3 * std_dev_ma
+        LCL = mean_ma - 3 * std_dev_ma
+
+        # 绘制移动平均图
         plt.figure(figsize=(12, 6))
-        plt.plot(df.index, df['data'], marker='o', linestyle='-', color='b', label='Data')
-        plt.plot(ewma.index, ewma, marker='x', linestyle='-', color='g', label='EWMA')
-        plt.axhline(mean, color='r', linestyle='--', label='Mean')
-        plt.plot(df.index, UCL, color='r', linestyle='--', label='UCL')
-        plt.plot(df.index, LCL, color='r', linestyle='--', label='LCL')
+        plt.plot(group_means.index, group_means['moving_avg'],  marker='o', linestyle='-', color='g', label='EWMA')
+        plt.step(group_means.index, group_means['UCL'] , where='pre', linestyle='--', color='r', label='UCL')
+        plt.step(group_means.index, group_means['LCL'] , where='pre', linestyle='--', color='r', label='LCL')
+        plt.axhline(mean_ma, color='r', linestyle='--', label='Mean')
+
         plt.title('EWMA Control Chart')
         plt.xlabel('Sample')
         plt.ylabel('Value')
@@ -442,8 +523,8 @@ class ProcessCapability:
         plt.show()
 
         calculations = {
-            'mean': mean,
-            'std_dev': std_dev,
+            'mean_ma': mean_ma,
+            'std_dev_ma': std_dev_ma,
             'UCL': UCL,
             'LCL': LCL,
         }
@@ -457,11 +538,23 @@ class ProcessCapability:
             raise ValueError("Mean value must be provided if mean is known.")
         if std_known and std_value is None:
             raise ValueError("Standard deviation value must be provided if standard deviation is known.")
-        
         df = pd.DataFrame({'data': self.data})
         n = len(df)
         sample_size = n // self.num_groups
-        cv_values = df['data'].rolling(window=sample_size).std() / df['data'].rolling(window=sample_size).mean()
+        df['group'] = (df.index // sample_size) + 1
+        group_stats = df.groupby('group')['data'].agg(['mean', 'std']).reset_index() 
+        # df = pd.DataFrame({'data': self.data})
+        # n = len(df)
+        # sample_size = n // self.num_groups
+        C2 = {
+        2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.94, 6: 0.9515,
+        7: 0.9594, 8: 0.965, 9: 0.9693, 10: 0.9727, 11: 0.9754,
+        12: 0.9776, 13: 0.9794, 14: 0.981, 15: 0.9823, 16: 0.9835,
+        17: 0.9845, 18: 0.9854, 19: 0.9862, 20: 0.9869,
+        25: 0.989, 30: 0.9904, 35: 0.9914, 40: 0.9922
+        }.get(sample_size)
+
+        cv_values = C2*group_stats['std']/group_stats['mean']
 
         if mean_known and std_known:
             mean_cv = std_value / mean_value
@@ -473,8 +566,27 @@ class ProcessCapability:
         else:
             std_dev_cv = cv_values.std()
 
-        B3 = 1 - 3 * (std_dev_cv / np.sqrt(sample_size))
-        B4 = 1 + 3 * (std_dev_cv / np.sqrt(sample_size))
+        B3_table = {
+        2: 0, 3: 0, 4: 0, 5: 0, 6: 0.030,
+        7: 0.118, 8: 0.185, 9: 0.239, 10: 0.284,
+        11: 0.322, 12: 0.354, 13: 0.382, 14: 0.406,
+        15: 0.428, 16: 0.448, 17: 0.466, 18: 0.482,
+        19: 0.497, 20: 0.510, 25: 0.565, 30: 0.605,
+        35: 0.634, 40: 0.659
+    }
+
+        B4_table = {
+        2: 3.267, 3: 2.568, 4: 2.266, 5: 2.089, 6: 1.970,
+        7: 1.882, 8: 1.815, 9: 1.761, 10: 1.716,
+        11: 1.679, 12: 1.646, 13: 1.618, 14: 1.594,
+        15: 1.572, 16: 1.553, 17: 1.536, 18: 1.521,
+        19: 1.508, 20: 1.496, 25: 1.435, 30: 1.388,
+        35: 1.352, 40: 1.322
+    }
+
+
+        B3 = B3_table.get(sample_size)
+        B4 = B4_table.get(sample_size)
 
         UCL = B4 * mean_cv
         LCL = max(0, B3 * mean_cv)  # 控制下限不能小于0
@@ -499,24 +611,16 @@ class ProcessCapability:
         }
         return calculations
     
-    def _calculate_cusum(self,K1,K2):
-        """
-        计算CUSUM控制图的累积和
-        """
-        cusum_pos = np.zeros(len(self.data))
-        cusum_neg = np.zeros(len(self.data))
-
-        for i in range(1, len(self.data)):
-            cusum_pos[i] = max(0, cusum_pos[i - 1] + self.data[i] - K1)
-            cusum_neg[i] = min(0, cusum_neg[i - 1] + self.data[i] - K2)
-
-        return cusum_pos, cusum_neg
-
     def plot_cusum_chart(self):
         """
         绘制CUSUM控制图，包括累积和和控制界限
         """
         group_size = len(self.data) // self.num_groups
+        df = pd.DataFrame({'data': self.data})
+        n = len(df)
+        sample_size = n // self.num_groups
+        df['group'] = (df.index // sample_size) + 1
+        group_stats = df.groupby('group')['data'].agg(['mean', 'std']).reset_index() 
         a = self.std_dev*math.sqrt(group_size)
         if a < 0.75:
             f,h = 8,0.25
@@ -528,17 +632,18 @@ class ProcessCapability:
         H = h * self.std_dev
         K1 = self.mean + F
         K2 = self.mean - F
-        cusum_pos, cusum_neg = self._calculate_cusum(K1,K2)
+        group_stats['adjusted_mean1'] = group_stats['mean'] - K1
+        group_stats['adjusted_mean2'] = group_stats['mean'] - K2
+        group_stats['cumsum_adjusted_mean1'] = group_stats['adjusted_mean1'].cumsum()
+        group_stats['cumsum_adjusted_mean2'] = group_stats['adjusted_mean2'].cumsum()
         calculations = {
             'K1': K1,
             'K2': K2,
-            'cusum_pos':cusum_pos,
-            'cusum_neg':cusum_neg,
         }
 
         plt.figure(figsize=(12, 6))
-        plt.plot(cusum_pos, marker='o', linestyle='-', color='b', label='CUSUM+')
-        plt.plot(cusum_neg, marker='o', linestyle='-', color='r', label='CUSUM-')
+        plt.plot(group_stats.index,group_stats['cumsum_adjusted_mean1'], marker='o', linestyle='-', color='b', label='CUSUM-')
+        plt.plot(group_stats.index,group_stats['cumsum_adjusted_mean2'], marker='o', linestyle='-', color='r', label='CUSUM+')
         plt.axhline(H, color='g', linestyle='--', label='UCL')
         plt.axhline(-H, color='g', linestyle='--', label='LCL')
         plt.axhline(0, color='k', linestyle='-', label='Target')
@@ -550,90 +655,90 @@ class ProcessCapability:
         return calculations
         
 
-    def _get_characteristic_value(self,P0,P1):
-        """
-        根据 P1 / P0 查找特性值
-        """
-        ratio = P1 /P0
-        characteristic_values = {
-            1.1: 0.4,
-            1.2: 0.5,
-            1.3: 0.6,
-            1.4: 0.7,
-            1.5: 0.8
-        }
-        return characteristic_values.get(ratio, 0.5)  # 默认值为0.5
+    # def _get_characteristic_value(self,P0,P1):
+    #     """
+    #     根据 P1 / P0 查找特性值
+    #     """
+    #     ratio = P1 /P0
+    #     characteristic_values = {
+    #         1.1: 0.4,
+    #         1.2: 0.5,
+    #         1.3: 0.6,
+    #         1.4: 0.7,
+    #         1.5: 0.8
+    #     }
+    #     return characteristic_values.get(ratio, 0.5)  # 默认值为0.5
 
-    def _get_T0(self, characteristic_value):
-        """
-        根据特性值查找 T0
-        """
-        T0_values = {
-            0.4: 20,
-            0.5: 25,
-            0.6: 30,
-            0.7: 35,
-            0.8: 40
-        }
-        return T0_values.get(characteristic_value, 25)  # 默认值为25
+    # def _get_T0(self, characteristic_value):
+    #     """
+    #     根据特性值查找 T0
+    #     """
+    #     T0_values = {
+    #         0.4: 20,
+    #         0.5: 25,
+    #         0.6: 30,
+    #         0.7: 35,
+    #         0.8: 40
+    #     }
+    #     return T0_values.get(characteristic_value, 25)  # 默认值为25
 
-    def _calculate_cusum(self, K1, K2):
-        """
-        计算CUSUM控制图的累积和
-        """
-        cusum_pos = np.zeros(len(self.data))
-        cusum_neg = np.zeros(len(self.data))
+    # def _calculate_cusum(self, K1, K2):
+    #     """
+    #     计算CUSUM控制图的累积和
+    #     """
+    #     cusum_pos = np.zeros(len(self.data))
+    #     cusum_neg = np.zeros(len(self.data))
 
-        for i in range(1, len(self.data)):
-            cusum_pos[i] = max(0, cusum_pos[i - 1] + self.data[i] - K1)
-            cusum_neg[i] = min(0, cusum_neg[i - 1] + self.data[i] - K2)
+    #     for i in range(1, len(self.data)):
+    #         cusum_pos[i] = max(0, cusum_pos[i - 1] + self.data[i] - K1)
+    #         cusum_neg[i] = min(0, cusum_neg[i - 1] + self.data[i] - K2)
 
-        return cusum_pos, cusum_neg
+    #     return cusum_pos, cusum_neg
 
-    def plot_count_cusum_chart(self,P0 ,P1):
-        """
-        绘制计数型CUSUM控制图，包括累积和和控制界限
-        """
-        characteristic_value = self._get_characteristic_value(P0,P1)
-        T0 = self._get_T0(characteristic_value)
-        sample_size = T0 /P0
+    # def plot_count_cusum_chart(self,P0 ,P1):
+    #     """
+    #     绘制计数型CUSUM控制图，包括累积和和控制界限
+    #     """
+    #     characteristic_value = self._get_characteristic_value(P0,P1)
+    #     T0 = self._get_T0(characteristic_value)
+    #     sample_size = T0 /P0
 
-        group_size = len(self.data) // self.num_groups
-        a = self.std_dev * np.sqrt(group_size)
+    #     group_size = len(self.data) // self.num_groups
+    #     a = self.std_dev * np.sqrt(group_size)
         
-        if a < 0.75:
-            f, h = 8, 0.25
-        elif a > 1.5:
-            f, h = 2.5, 1
-        else:
-            f, h = 5, 0.5
+    #     if a < 0.75:
+    #         f, h = 8, 0.25
+    #     elif a > 1.5:
+    #         f, h = 2.5, 1
+    #     else:
+    #         f, h = 5, 0.5
         
-        F = f * self.std_dev
-        H = h * self.std_dev
-        K1 = self.mean + F
-        K2 = self.mean - F
+    #     F = f * self.std_dev
+    #     H = h * self.std_dev
+    #     K1 = self.mean + F
+    #     K2 = self.mean - F
 
-        cusum_pos, cusum_neg = self._calculate_cusum(K1, K2)
+    #     cusum_pos, cusum_neg = self._calculate_cusum(K1, K2)
 
-        calculations = {
-            'K1': K1,
-            'K2': K2,
-            'cusum_pos': cusum_pos,
-            'cusum_neg': cusum_neg,
-            'sample_size': sample_size
-        }
+    #     calculations = {
+    #         'K1': K1,
+    #         'K2': K2,
+    #         'cusum_pos': cusum_pos,
+    #         'cusum_neg': cusum_neg,
+    #         'sample_size': sample_size
+    #     }
 
-        plt.figure(figsize=(12, 6))
-        plt.plot(cusum_pos, marker='o', linestyle='-', color='b', label='CUSUM+')
-        plt.plot(cusum_neg, marker='o', linestyle='-', color='r', label='CUSUM-')
-        plt.axhline(H, color='g', linestyle='--', label='UCL')
-        plt.axhline(-H, color='g', linestyle='--', label='LCL')
-        plt.axhline(0, color='k', linestyle='-', label='Target')
-        plt.title('CUSUM Control Chart')
-        plt.xlabel('Sample')
-        plt.ylabel('Cumulative Sum')
-        plt.legend()
-        plt.show()
+    #     plt.figure(figsize=(12, 6))
+    #     plt.plot(cusum_pos, marker='o', linestyle='-', color='b', label='CUSUM+')
+    #     plt.plot(cusum_neg, marker='o', linestyle='-', color='r', label='CUSUM-')
+    #     plt.axhline(H, color='g', linestyle='--', label='UCL')
+    #     plt.axhline(-H, color='g', linestyle='--', label='LCL')
+    #     plt.axhline(0, color='k', linestyle='-', label='Target')
+    #     plt.title('CUSUM Control Chart')
+    #     plt.xlabel('Sample')
+    #     plt.ylabel('Cumulative Sum')
+    #     plt.legend()
+    #     plt.show()
         
         return calculations
     
@@ -641,7 +746,12 @@ class ProcessCapability:
         """
         绘制链图（Cumulative Sum Control Chart）
         """
-        chain_sum = np.cumsum(self.data - self.mean)
+        df = pd.DataFrame({'data': self.data})
+        n = len(df)
+        sample_size = n // self.num_groups
+        df['group'] = (df.index // sample_size) + 1
+        group_stats = df.groupby('group')['data'].agg(['mean', 'std']).reset_index() 
+        chain_sum = np.cumsum(group_stats['mean'] - self.mean)
 
         plt.figure(figsize=(12, 6))
         plt.plot(chain_sum, marker='o', linestyle='-', color='b', label='Chain Sum')
@@ -714,23 +824,24 @@ if __name__ == "__main__":
     # e=process_capability.plot_xr_chart()
 
     # 绘制 X-S 图
-    f=process_capability.plot_xs_chart()
+    # f=process_capability.plot_xs_chart()
 
     # 绘制 I-MR 图
     # g=process_capability.plot_imr_chart()
+    z = process_capability.plot_standard_chart()
 
-    # h = process_capability.plot_capability_chart(USL, LSL)
+    h = process_capability.plot_capability_chart(USL, LSL)
 
-    # # 绘制移动平均控制图
-    # i = process_capability.plot_moving_average_chart()
+    # 绘制移动平均控制图
+    i = process_capability.plot_moving_average_chart()
 
-    # # 绘制EWMA控制图
-    # j = process_capability.plot_ewma_chart(lambda_value=0.2)
+    # 绘制EWMA控制图
+    j = process_capability.plot_ewma_chart(r=0.2)
 
-    # k = process_capability.plot_cv_control_chart()
+    k = process_capability.plot_cv_control_chart()
 
-    # l = process_capability.plot_cusum_chart()
-    # print(l)
+    l = process_capability.plot_cusum_chart()
+    print(l)
     # m = process_capability.plot_count_cusum_chart(P0=0.2,P1=0.4)
 
-    # n = process_capability.plot_chain_chart()
+    n = process_capability.plot_chain_chart()

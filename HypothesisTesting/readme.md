@@ -67,7 +67,7 @@
 - **Description**: 多样本方差检验（单因素方差分析）。
 - **Parameters**: 
   - `columns` (list of str): 可变数量的待检验的列名。
-  - `test_type`(str): 检验方法（'hartley'、'bartlett'、'modified_bartlett' 或 'levene'）
+  - `test_type`(str): 检验方法（'bartlett'、'modified_bartlett' 或 'levene'）
   - `alternative` (str):假设检验类型（'two-sided'、'less' 或 'greater'）
   - `alpha` (float):显著性水平（默认为 0.05）
 - **Returns**: f-statistic, p-value, critical value

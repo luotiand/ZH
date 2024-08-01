@@ -43,7 +43,6 @@ class ChartRules:
         for start in indices:
             if start + 14 <= len(self.df):  # 确保索引不会超出范围
                 result = pd.concat([result, self.df.iloc[start-14:start+1]])
-
         return result
 
     def eight_points_outside_zone_c(self):

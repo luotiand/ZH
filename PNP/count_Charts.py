@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from ChartRules import ChartRules
+from foot.CPK_calculate.ChartRules import ChartRules
 
 class ControlCharts:
     def __init__(self, df):

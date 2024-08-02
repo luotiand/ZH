@@ -21,7 +21,7 @@ class ControlCharts:
 
         # 计算每组的UCL和LCL
         self.df['UCL'] = self.df.apply(lambda row: p_bar + 3 * np.sqrt((p_bar * (1 - p_bar)) / row['Total']), axis=1)
-        self.df['LCL'] = self.df.apply(lambda row: p_bar - 3 * np.sqrt((p_bar * (1 - p_bar)) / row['Total']), axis=1)
+        self.df['LCL'] = self.df.apply(lambda row: max(p_bar - 3 * np.sqrt((p_bar * (1 - p_bar)) / row['Total']),0), axis=1)
         chartRules = ChartRules(self.df['p'],self.df['UCL'],self.df['LCL'])
         points_outside_control_limits = chartRules.points_outside_control_limits()
         six_consecutive_points = chartRules.six_consecutive_points_trending()
@@ -64,7 +64,7 @@ class ControlCharts:
         n = self.df.iloc[:, 2]
         # 计算每组的UCL和LCL
         UCL =  np_bar + 3 * np.sqrt(np_bar*(1-p_bar))
-        LCL =  np_bar - 3 * np.sqrt(np_bar*(1-p_bar))
+        LCL =  max(np_bar - 3 * np.sqrt(np_bar*(1-p_bar)),0)
         
         calculations = {
             'np_bar': np_bar,
@@ -147,8 +147,8 @@ class ControlCharts:
 def main():
     # 示例数据
     data = {
-        'defects': [16, 11, 18, 6, 11, 15, 14, 12, 15, 16, 17, 19, 14, 17, 5, 11, 5, 15, 17, 7, 18, 9, 20, 7, 9, 36, 7, 20, 9, 9],
-        'total': [870, 800, 921, 638, 750, 543, 625, 835, 938, 867, 787, 646, 753, 635, 958, 694, 712, 683, 953, 840, 914, 685, 661, 886, 606, 788, 751, 892, 947, 927]
+        'defects': [3,4,6,8,6,6,3,4,8,7,9,6,12,3,7,10,6,3,7,4,5,4,12,11,7,8,8,7,7,5],
+        'total': [150]*30
     }
 
     # 创建 DataFrame

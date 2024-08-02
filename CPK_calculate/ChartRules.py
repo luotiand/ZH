@@ -32,7 +32,6 @@ class ChartRules:
         result = self.df[alternating].index.to_series().apply(lambda idx: self.df.iloc[idx-13:idx+1] if idx >= 13 else pd.DataFrame())
         return result
 
-
     def fifteen_points_in_zone_c(self):
         # 方法4: 连续15个点都是C区
         zone_c_upper = self.p_bar + (self.df['UCL'] - self.p_bar) / 3

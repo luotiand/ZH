@@ -92,20 +92,20 @@ class ChartRules:
             if start + 8 <= len(self.df):  # 确保索引不会超出范围
                 result = pd.concat([result, self.df.iloc[start-8:start+1]])
         return result
+if __name__ == 'main':
+        # 示例数据
+        p = [0.01, 0.02, 0.01, 0.00, 0.03, 0.02, 0.01, 0.00, 0.01, 0.02, 0.01, 0.03, 0.02, 0.01, 0.00]
+        UCL = 0.03
+        LCL = 0.00
 
-# # 示例数据
-# p = [0.01, 0.02, 0.01, 0.00, 0.03, 0.02, 0.01, 0.00, 0.01, 0.02, 0.01, 0.03, 0.02, 0.01, 0.00]
-# UCL = 0.03
-# LCL = 0.00
+        control_rules = ChartRules(p, UCL, LCL)
 
-# control_rules = ChartRules(p, UCL, LCL)
-
-# # 调用异常检测方法
-# print("Points outside control limits:", control_rules.points_outside_control_limits())
-# print("Six consecutive points trending:", control_rules.six_consecutive_points_trending())
-# print("Fourteen points alternating:", control_rules.fourteen_points_alternating())
-# print("Fifteen points in zone C:", control_rules.fifteen_points_in_zone_c())
-# print("Eight points outside zone C:", control_rules.eight_points_outside_zone_c())
-# print("Three points in zone A:", control_rules.three_points_in_zone_a())
-# print("Four of five points in zone B or beyond:", control_rules.four_of_five_points_in_zone_b_or_beyond())
-# print("Nine points on one side of center line:", control_rules.nine_points_on_one_side_of_center_line())
+        # 调用异常检测方法
+        print("Points outside control limits:", control_rules.points_outside_control_limits())
+        print("Six consecutive points trending:", control_rules.six_consecutive_points_trending())
+        print("Fourteen points alternating:", control_rules.fourteen_points_alternating())
+        print("Fifteen points in zone C:", control_rules.fifteen_points_in_zone_c())
+        print("Eight points outside zone C:", control_rules.eight_points_outside_zone_c())
+        print("Three points in zone A:", control_rules.three_points_in_zone_a())
+        print("Four of five points in zone B or beyond:", control_rules.four_of_five_points_in_zone_b_or_beyond())
+        print("Nine points on one side of center line:", control_rules.nine_points_on_one_side_of_center_line())

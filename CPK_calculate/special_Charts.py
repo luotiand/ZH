@@ -60,14 +60,14 @@ class special_Charts:
         plt.ylabel('Interval')
         plt.legend()
         plt.show()
+if __name__ == 'main':
+        # 示例数据
+        data = pd.Series([14,11,36,8,13,3,23,4,8,23,14,5,1,7,8,6,1,18,2,11,4,12,5,6,10,12,0,0,0,0,2,7,6,6,13,16])
 
-# 示例数据
-data = pd.Series([14,11,36,8,13,3,23,4,8,23,14,5,1,7,8,6,1,18,2,11,4,12,5,6,10,12,0,0,0,0,2,7,6,6,13,16])
+        # 创建并绘制G控制图
+        g_chart = special_Charts(data, chart_type='G')
+        g_chart.plot_chart()
 
-# 创建并绘制G控制图
-g_chart = special_Charts(data, chart_type='G')
-g_chart.plot_chart()
-
-# 创建并绘制T控制图
-t_chart = special_Charts(data, chart_type='T')
-t_chart.plot_chart()
+        # 创建并绘制T控制图
+        t_chart = special_Charts(data, chart_type='T')
+        t_chart.plot_chart()
